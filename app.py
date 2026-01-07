@@ -30,7 +30,9 @@ try:
         # 1. FILTRO DE FECHA (Obligatorio)
         fechas = sorted(df['PERIODO'].dt.strftime('%Y-%m-%d').unique().tolist())
         meses_sel = st.multiselect("1. Periodo:", options=fechas, default=fechas[0] if fechas else None)
-        
+        st.divider()
+    st.caption("ℹ️ Nota del Sistema:")
+    st.info("Los datos se sincronizan automáticamente cada 5 minutos desde Google Sheets. Si acabas de cargar un profesional, aguarda unos instantes.")
         st.divider()
 
         # 2. FILTROS ESPECÍFICOS (El "Subfiltro" que pediste)
