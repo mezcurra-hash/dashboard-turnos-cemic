@@ -7,7 +7,7 @@ st.set_page_config(page_title="Gestión de Turnos", layout="wide", page_icon="�
 
 st.title("🏥 Oferta de Turnos de Consultorio - CEMIC")
 st.markdown("---")
-st.image("https://cemic.edu.ar/index.php", width=200)
+st.image("https://cemic.edu.ar/assets/img/logo/logo-cemic.png", width=200)
 
 # --- CARGA DE DATOS ---
 @st.cache_data
