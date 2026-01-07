@@ -18,7 +18,7 @@ st.markdown("""
 col1, col2 = st.columns([1, 5])
 with col1:
     # Asegúrate de tener el archivo logo.png en tu GitHub
-    st.image("logo.png", width=100) 
+    st.image("https://cemic.edu.ar/assets/img/logo/logo-cemic.png", width=100) 
 with col2:
     st.title("Oferta de Turnos - CEMIC")
 st.markdown("---")
