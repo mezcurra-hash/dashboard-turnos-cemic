@@ -123,4 +123,94 @@ try:
     if filtro_prof:
         df_filtered = df_filtered[df_filtered['PROFESIONAL/EQUIPO'].isin(filtro_prof)]
 
-    if
+    if df_filtered.empty:
+        st.error("⚠️ No hay datos con esos filtros.")
+        st.stop()
+
+    # --- VISUALIZACIÓN ---
+    
+    # === CASO 1: TU VISTA ORIGINAL (Análisis Global) ===
+    if modo_analisis == "📊 Análisis Global":
+        totales = df_filtered[valores_sel].sum()
+
+        st.subheader(f"Resumen Global ({len(meses_sel)} periodos)")
+        cols = st.columns(len(valores_sel))
+        for i, metrica in enumerate(valores_sel):
+            valor = totales[metrica]
+            cols[i].metric(label=metrica, value=f"{valor:,.0f}")
+
+        st.markdown("---")
+
+        tab1, tab2 = st.tabs(["📊 Análisis Visual", "📄 Tabla Detallada"])
+
+        with tab1:
+            st.markdown(f"**Distribución por {filas_sel[0]}**")
+            chart_data = df_filtered.groupby(filas_sel[0])[valores_sel].sum()
+            st.bar_chart(chart_data, height=500, use_container_width=True)
+
+        with tab2:
+            tabla = pd.pivot_table(
+                df_filtered, 
+                index=filas_sel, 
+                values=valores_sel, 
+                aggfunc='sum', 
+                margins=True, 
+                margins_name='TOTAL GENERAL'
+            )
+            st.dataframe(tabla.style.format("{:,.0f}").background_gradient(cmap='Blues'), use_container_width=True, height=600)
+            st.download_button("📥 Descargar Excel", tabla.to_csv().encode('utf-8'), "reporte.csv", mime='text/csv')
+
+    # === CASO 2: NUEVA VISTA COMPARATIVA (A vs B) ===
+    else:
+        st.subheader(f"🆚 Comparativa: {periodo_a} vs {periodo_b}")
+        
+        # Separamos los datos en dos DataFrames
+        df_a = df_filtered[df_filtered['PERIODO'] == periodo_a]
+        df_b = df_filtered[df_filtered['PERIODO'] == periodo_b]
+        
+        # 1. KPIs con Variación (DELTA)
+        cols_kpi = st.columns(len(valores_sel))
+        for i, metrica in enumerate(valores_sel):
+            val_a = df_a[metrica].sum()
+            val_b = df_b[metrica].sum()
+            diferencia = val_b - val_a
+            porcentaje = (diferencia / val_a * 100) if val_a != 0 else 0
+            
+            cols_kpi[i].metric(
+                label=metrica, 
+                value=f"{val_b:,.0f}", 
+                delta=f"{diferencia:,.0f} ({porcentaje:.1f}%)"
+            )
+            
+        st.markdown("---")
+
+        # 2. Gráfico Comparativo Lado a Lado
+        # Agrupamos A y B
+        group_a = df_a.groupby(filas_sel[0])[valores_sel[0]].sum().rename(f"{periodo_a}")
+        group_b = df_b.groupby(filas_sel[0])[valores_sel[0]].sum().rename(f"{periodo_b}")
+        
+        # Unimos
+        df_chart = pd.concat([group_a, group_b], axis=1).fillna(0)
+        
+        tab1, tab2 = st.tabs(["📊 Comparación Visual", "📄 Tabla de Variación"])
+        
+        with tab1:
+            st.markdown(f"**Comparativa por {filas_sel[0]}**")
+            st.bar_chart(df_chart, use_container_width=True)
+            
+        with tab2:
+            # Calculamos diferencia en la tabla
+            df_chart['Diferencia'] = df_chart.iloc[:, 1] - df_chart.iloc[:, 0]
+            df_chart['Var %'] = (df_chart['Diferencia'] / df_chart.iloc[:, 0]) * 100
+            
+            st.dataframe(
+                df_chart.style.format("{:,.0f}", subset=[df_chart.columns[0], df_chart.columns[1], 'Diferencia'])
+                .format("{:.1f}%", subset=['Var %'])
+                .background_gradient(cmap='RdYlGn', subset=['Diferencia']),
+                use_container_width=True,
+                height=600
+            )
+
+except Exception as e:
+    st.error("Error técnico:")
+    st.write(e)
