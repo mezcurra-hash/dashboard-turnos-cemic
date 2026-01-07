@@ -11,7 +11,7 @@ st.markdown("---")
 # --- CARGA DE DATOS ---
 @st.cache_data
 def cargar_datos():
-    url_csv = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSE_a5zehFJmJnMpGn5BMLTy3262nHEQDXgEe2Ad8T5fN3siBB4gv3ob7HwMyeS63eO5ve57HM0ZeGR/pub?gid=182727859&single=true&output=csv"
+    url_csv = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQHFwl-Dxn-Rw9KN_evkCMk2Er8lQqgZMzAtN4LuEkWcCeBVUNwgb8xeIFKvpyxMgeGTeJ3oEWKpMZj/pub?gid=1524527213&single=true&output=csv"
     df = pd.read_csv(url_csv)
     return df
 
