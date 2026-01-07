@@ -4,6 +4,14 @@ import matplotlib.pyplot as plt
 
 # --- CONFIGURACIÓN ---
 st.set_page_config(page_title="Gestión de Turnos", layout="wide", page_icon="🏥")
+hide_st_style = """
+            <style>
+            #MainMenu {visibility: hidden;}
+            footer {visibility: hidden;}
+            header {visibility: hidden;}
+            </style>
+            """
+st.markdown(hide_st_style, unsafe_allow_html=True)
 
 st.title("🏥 Oferta de Turnos de Consultorio - CEMIC")
 st.markdown("---")
