@@ -1,111 +1,60 @@
 import streamlit as st
 import pandas as pd
-import gspread
-from oauth2client.service_account import ServiceAccountCredentials
 
-# --- CONFIGURACIÓN DE LA PÁGINA ---
+# --- CONFIGURACIÓN ---
 st.set_page_config(page_title="Gestión de Turnos", layout="wide")
-
-# Título y Estilo
 st.title("🏥 Dashboard de Gestión - CEMIC")
 st.markdown("---")
 
-# --- CONEXIÓN CON GOOGLE SHEETS (Segura) ---
-# Esta función usa "Secretos" para no escribir la contraseña en el código
-@st.cache_data(ttl=600) # Esto hace que no recargue el excel a cada clic (memoria caché)
+# --- CARGA DE DATOS (MÉTODO RÁPIDO PUBLICO) ---
+@st.cache_data
 def cargar_datos():
-    # Definimos el alcance (permisos)
-    scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
+    # PEGA AQUI TU LINK LARGO ENTRE LAS COMILLAS
+    url_csv = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSE_a5zehFJmJnMpGn5BMLTy3262nHEQDXgEe2Ad8T5fN3siBB4gv3ob7HwMyeS63eO5ve57HM0ZeGR/pub?gid=182727859&single=true&output=csv"
     
-    # Leemos las credenciales desde los "Secretos" de Streamlit
-    creds_dict = dict(st.secrets["gcp_service_account"])
-    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-    
-    # Autorizamos y abrimos
-    client = gspread.authorize(creds)
-    
-    # REEMPLAZA AQUI CON EL NOMBRE EXACTO DE TU ARCHIVO
-    sheet = client.open("DATASET_APP_TEST") 
-    worksheet = sheet.worksheet("BD_HISTORICO")
-    
-    data = worksheet.get_all_records()
-    return pd.DataFrame(data)
+    # Leemos directo el CSV desde la web
+    df = pd.read_csv(url_csv)
+    return df
 
-# --- CARGA Y LIMPIEZA ---
 try:
     df = cargar_datos()
-    
-    # Limpieza de fechas
+
+    # --- LIMPIEZA RÁPIDA ---
+    # Convertimos fecha (asegurate que en tu Excel la fecha sea DD/MM/AAAA)
     df['PERIODO'] = pd.to_datetime(df['PERIODO'], dayfirst=True, errors='coerce')
     df = df.dropna(subset=['PERIODO'])
-    
-    # --- BARRA LATERAL (FILTROS) ---
+
+    # --- BARRA LATERAL ---
     st.sidebar.header("🎛️ Panel de Control")
+
+    # Filtros
+    fechas = sorted(df['PERIODO'].dt.strftime('%Y-%m-%d').unique().tolist())
+    meses_sel = st.sidebar.multiselect("Periodo:", options=fechas, default=fechas[0] if fechas else None)
     
-    # 1. Selector de Fechas
-    fechas_disponibles = sorted(df['PERIODO'].dt.strftime('%Y-%m-%d').unique().tolist())
-    meses_sel = st.sidebar.multiselect(
-        "1. Seleccionar Periodo:",
-        options=fechas_disponibles,
-        default=fechas_disponibles[0] if fechas_disponibles else None
-    )
+    cols_agrupables = list(df.columns) # Leemos todas las columnas para que elijas
+    # Quitamos las numéricas de la lista de agrupar para limpiar un poco
+    cols_agrupables = [c for c in cols_agrupables if df[c].dtype == 'O'] 
     
-    # 2. Selector de Filas (Agrupación)
-    cols_agrupar = ['DEPARTAMENTO', 'SERVICIO', 'SEDE', 'PROFESIONAL/EQUIPO', 'DIA_SEMANA']
-    filas_sel = st.sidebar.multiselect(
-        "2. Agrupar por:",
-        options=cols_agrupar,
-        default=['SERVICIO']
-    )
+    filas_sel = st.sidebar.multiselect("Agrupar por:", options=cols_agrupables, default=['SERVICIO'])
     
-    # 3. Selector de Valores (Métricas)
-    cols_valores = ['TURNOS_MENSUAL', 'HS_MENSUAL', 'HS_SEMANAL', 'TURNOS DIARIOS']
-    valores_sel = st.sidebar.multiselect(
-        "3. Métricas a sumar:",
-        options=cols_valores,
-        default=['TURNOS_MENSUAL']
-    )
-    
-    # --- ÁREA PRINCIPAL ---
+    # Detectamos columnas numéricas automáticamente para sumar
+    cols_numericas = df.select_dtypes(include=['float', 'int']).columns.tolist()
+    valores_sel = st.sidebar.multiselect("Sumar métricas:", options=cols_numericas, default=cols_numericas[0] if cols_numericas else None)
+
+    # --- REPORTE ---
     if st.sidebar.button("GENERAR TABLA"):
         if not meses_sel or not filas_sel or not valores_sel:
-            st.error("⚠️ Por favor selecciona al menos una opción en cada filtro.")
+            st.warning("Selecciona al menos una opción en cada filtro.")
         else:
-            # Filtro de fecha
             mask = df['PERIODO'].isin(pd.to_datetime(meses_sel))
-            df_filtrado = df[mask]
+            df_filtered = df[mask]
             
-            # Tabla Dinámica
-            tabla = pd.pivot_table(
-                df_filtrado,
-                index=filas_sel,
-                values=valores_sel,
-                aggfunc='sum',
-                margins=True,
-                margins_name='TOTAL GENERAL'
-            )
+            tabla = pd.pivot_table(df_filtered, index=filas_sel, values=valores_sel, aggfunc='sum', margins=True, margins_name='TOTAL')
             
-            # Mensaje de éxito
-            st.success(f"Mostrando datos de {len(meses_sel)} periodos seleccionados.")
+            st.dataframe(tabla.style.format("{:,.0f}").background_gradient(cmap='Blues'), use_container_width=True)
             
-            # Mostrar tabla interactiva
-            st.dataframe(
-                tabla.style.format("{:,.0f}").background_gradient(cmap='Blues'), 
-                use_container_width=True,
-                height=600
-            )
-            
-            # Botón de descarga CSV
-            csv = tabla.to_csv().encode('utf-8')
-            st.download_button(
-                "📥 Descargar Reporte en CSV",
-                csv,
-                "reporte_cemic.csv",
-                "text/csv",
-                key='download-csv'
-            )
+            st.download_button("📥 Descargar CSV", tabla.to_csv().encode('utf-8'), "reporte.csv")
 
 except Exception as e:
-    st.warning("⚠️ Esperando conexión con Google Sheets...")
-    st.info("Nota: Si ves esto al principio, es porque falta configurar las credenciales en Streamlit Cloud.")
-    st.expander("Ver detalle del error (para el desarrollador)").write(e)
+    st.error("Error al cargar datos:")
+    st.write(e)
