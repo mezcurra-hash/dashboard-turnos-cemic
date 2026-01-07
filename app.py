@@ -1,187 +1,150 @@
 import streamlit as st
 import pandas as pd
+import matplotlib.pyplot as plt
 
-# --- CONFIGURACIÓN DE PÁGINA ---
+# --- CONFIGURACIÓN ---
 st.set_page_config(page_title="Gestión de Turnos", layout="wide", page_icon="🏥")
+hide_st_style = """
+            <style>
+            #MainMenu {visibility: hidden;}
+            footer {visibility: hidden;}
+            header {visibility: hidden;}
+            </style>
+            """
+st.markdown(hide_st_style, unsafe_allow_html=True)
 
-# --- ESTILOS CSS (Modo Kiosco + Métricas) ---
-st.markdown("""
-<style>
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
-    [data-testid="stMetricDelta"] svg { display: inline; }
-</style>
-""", unsafe_allow_html=True)
-
-# --- CABECERA ---
-col1, col2 = st.columns([1, 5])
-with col1:
-    # Si tienes el logo subido, déjalo así. Si no, borra esta línea.
-    try:
-        st.image("logo.png", width=100)
-    except:
-        st.write("") # Espacio vacío si no encuentra el logo
-with col2:
-    st.title("Oferta de Turnos - CEMIC")
+st.title("🏥 Oferta de Turnos de Consultorio - CEMIC")
 st.markdown("---")
+st.image("https://cemic.edu.ar/assets/img/logo/logo-cemic.png", width=200)
 
-# --- CARGA DE DATOS (SOLO HISTÓRICO) ---
+# --- CARGA DE DATOS ---
 @st.cache_data
-def cargar_datos_simple():
-    # --- PEGA TU LINK AQUÍ ABAJO ---
-    url_historico = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQHFwl-Dxn-Rw9KN_evkCMk2Er8lQqgZMzAtN4LuEkWcCeBVUNwgb8xeIFKvpyxMgeGTeJ3oEWKpMZj/pub?gid=1524527213&single=true&output=csv"
-    
-    # Leemos solo un archivo
-    df = pd.read_csv(url_historico)
+def cargar_datos():
+    url_csv = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQHFwl-Dxn-Rw9KN_evkCMk2Er8lQqgZMzAtN4LuEkWcCeBVUNwgb8xeIFKvpyxMgeGTeJ3oEWKpMZj/pub?gid=1524527213&single=true&output=csv"
+    df = pd.read_csv(url_csv)
     return df
 
 try:
-    df = cargar_datos_simple()
-    
+    df = cargar_datos()
+
     # --- LIMPIEZA ---
-    # Convertimos fecha (asegurate que en tu Excel la fecha sea DD/MM/AAAA)
     df['PERIODO'] = pd.to_datetime(df['PERIODO'], dayfirst=True, errors='coerce')
     df = df.dropna(subset=['PERIODO'])
-    
-    # --- BARRA LATERAL ---
+
+    # --- BARRA LATERAL (Filtros) ---
     with st.sidebar:
         st.header("🎛️ Panel de Control")
         
-        # 1. INTERRUPTOR DE MODO
-        modo_analisis = st.radio(
-            "Selecciona Modo:",
-            ["📊 Análisis Global", "🆚 Comparativa Mensual"],
-            horizontal=True
-        )
-        st.divider()
-
-        # Lógica de Fechas
-        fechas_disponibles = sorted(df['PERIODO'].dt.strftime('%Y-%m-%d').unique().tolist())
-        
-        if not fechas_disponibles:
-            st.error("No se encontraron fechas válidas en el Excel.")
-            st.stop()
-
-        if modo_analisis == "📊 Análisis Global":
-            meses_sel = st.multiselect("Periodos:", options=fechas_disponibles, default=fechas_disponibles)
-        else:
-            # Comparativa A vs B
-            col_a, col_b = st.columns(2)
-            idx_a = max(0, len(fechas_disponibles)-2)
-            idx_b = len(fechas_disponibles)-1
-            
-            with col_a:
-                periodo_a = st.selectbox("Base:", options=fechas_disponibles, index=idx_a)
-            with col_b:
-                periodo_b = st.selectbox("Actual:", options=fechas_disponibles, index=idx_b)
-            
-            meses_sel = [periodo_a, periodo_b]
-
-        st.divider()
-
-        # Filtros Específicos (Dinámicos según lo que haya en el Excel)
-        with st.expander("🔍 Filtros Específicos"):
-            # Detectamos columnas de texto automáticamente
-            cols_texto = df.select_dtypes(include=['object']).columns.tolist()
-            # Columnas clave que nos interesan para filtrar
-            claves = ['DEPARTAMENTO', 'SERVICIO', 'SEDE', 'PROFESIONAL', 'PROFESIONAL/EQUIPO']
-            
-            filtros_activos = {}
-            for col in claves:
-                if col in df.columns:
-                    opciones = sorted(df[col].astype(str).unique())
-                    filtros_activos[col] = st.multiselect(f"{col}:", options=opciones)
-
-        # Configuración Visual
-        # Si existe SERVICIO lo usa, si no, usa la primera columna de texto que encuentre
-        default_fila = ['SERVICIO'] if 'SERVICIO' in df.columns else ([cols_texto[0]] if cols_texto else None)
-        filas_sel = st.multiselect("Agrupar por:", options=cols_texto, default=default_fila)
-        
-        # Métricas (Solo numéricas)
-        cols_num = df.select_dtypes(include=['float', 'int']).columns.tolist()
-        metricas_posibles = [c for c in cols_num if c not in ['Year', 'Month']]
-        default_val = [metricas_posibles[0]] if metricas_posibles else None
-        valores_sel = st.multiselect("Métrica:", options=metricas_posibles, default=default_val)
-
+        # 1. FILTRO DE FECHA (Obligatorio)
+        fechas = sorted(df['PERIODO'].dt.strftime('%Y-%m-%d').unique().tolist())
+        meses_sel = st.multiselect("1. Periodo:", options=fechas, default=fechas[0] if fechas else None)
         st.divider()
         st.caption("ℹ️ Nota del Sistema:")
-        st.info("Sincronización automática c/ 5 min.")
+        st.info("Los datos se sincronizan automáticamente cada 5 minutos desde Google Sheets. Si acabas de cargar un profesional, aguarda unos instantes.")
+        st.divider()
 
-    # --- LÓGICA PRINCIPAL ---
+        # 2. FILTROS ESPECÍFICOS (El "Subfiltro" que pediste)
+        # Usamos un 'expander' para que no ocupe lugar si no se usa
+        with st.expander("🔍 Filtros Específicos (Opcional)"):
+            st.caption("Deja vacío para ver todo.")
+            
+            # Filtro por DEPARTAMENTO
+            deptos_unicos = sorted(df['DEPARTAMENTO'].astype(str).unique())
+            filtro_depto = st.multiselect("Filtrar Departamento:", options=deptos_unicos)
+            
+            # Filtro por SERVICIO
+            servicios_unicos = sorted(df['SERVICIO'].astype(str).unique())
+            filtro_servicio = st.multiselect("Filtrar Servicio:", options=servicios_unicos)
+            
+            # Filtro por SEDE
+            sedes_unicas = sorted(df['SEDE'].astype(str).unique())
+            filtro_sede = st.multiselect("Filtrar Sede:", options=sedes_unicas)
+            
+            # Filtro por PROFESIONAL (Útil para búsquedas puntuales)
+            prof_unicos = sorted(df['PROFESIONAL/EQUIPO'].astype(str).unique())
+            filtro_prof = st.multiselect("Filtrar Profesional:", options=prof_unicos)
+
+        st.divider()
+        
+        # 3. CONFIGURACIÓN DE LA TABLA (Agrupación y Métricas)
+        cols_texto = df.select_dtypes(include=['object']).columns.tolist()
+        default_fila = ['SERVICIO'] if 'SERVICIO' in cols_texto else [cols_texto[0]]
+        filas_sel = st.multiselect("2. Agrupar tabla por:", options=cols_texto, default=default_fila)
+        
+        cols_numericas = df.select_dtypes(include=['float', 'int']).columns.tolist()
+        default_val = ['TURNOS_MENSUAL'] if 'TURNOS_MENSUAL' in cols_numericas else [cols_numericas[0]]
+        valores_sel = st.multiselect("3. Métricas:", options=cols_numericas, default=default_val)
+
+    # --- LÓGICA DE FILTRADO (El Cerebro) ---
     if not meses_sel or not filas_sel or not valores_sel:
-        st.warning("Selecciona opciones para continuar.")
+        st.warning("👈 Selecciona opciones en el menú lateral.")
         st.stop()
 
-    # 1. Filtro de Fecha
+    # A. Filtro por Fecha (Base)
     mask = df['PERIODO'].isin(pd.to_datetime(meses_sel))
     df_filtered = df[mask]
+
+    # B. Aplicamos los "Subfiltros" solo si el usuario eligió algo
+    if filtro_depto:
+        df_filtered = df_filtered[df_filtered['DEPARTAMENTO'].isin(filtro_depto)]
     
-    # 2. Subfiltros
-    for col, seleccion in filtros_activos.items():
-        if seleccion:
-            df_filtered = df_filtered[df_filtered[col].isin(seleccion)]
+    if filtro_servicio:
+        df_filtered = df_filtered[df_filtered['SERVICIO'].isin(filtro_servicio)]
+        
+    if filtro_sede:
+        df_filtered = df_filtered[df_filtered['SEDE'].isin(filtro_sede)]
+        
+    if filtro_prof:
+        df_filtered = df_filtered[df_filtered['PROFESIONAL/EQUIPO'].isin(filtro_prof)]
+
+    # Si después de filtrar no queda nada, avisamos
+    if df_filtered.empty:
+        st.error("⚠️ No hay datos que coincidan con esa combinación de filtros.")
+        st.stop()
 
     # --- VISUALIZACIÓN ---
-    
-    # MODO 1: GLOBAL
-    if modo_analisis == "📊 Análisis Global":
-        totales = df_filtered[valores_sel].sum()
-        
-        st.subheader(f"Resumen Global ({len(meses_sel)} periodos)")
-        cols = st.columns(len(valores_sel))
-        for i, metrica in enumerate(valores_sel):
-            cols[i].metric(metrica, f"{totales[metrica]:,.0f}")
-        
-        st.markdown("---")
-        
-        tab1, tab2 = st.tabs(["📊 Gráfico", "📄 Tabla"])
-        with tab1:
-            st.bar_chart(df_filtered.groupby(filas_sel[0])[valores_sel].sum())
-        with tab2:
-            tabla = pd.pivot_table(df_filtered, index=filas_sel, values=valores_sel, aggfunc='sum', margins=True, margins_name='TOTAL')
-            st.dataframe(tabla.style.format("{:,.0f}").background_gradient(cmap='Blues'), use_container_width=True)
+    totales = df_filtered[valores_sel].sum()
 
-    # MODO 2: COMPARATIVO
-    else:
-        st.subheader(f"🆚 Comparativa: {periodo_a} vs {periodo_b}")
-        
-        df_a = df_filtered[df_filtered['PERIODO'] == periodo_a]
-        df_b = df_filtered[df_filtered['PERIODO'] == periodo_b]
-        
-        # KPIs Comparativos
-        cols_kpi = st.columns(len(valores_sel))
-        for i, metrica in enumerate(valores_sel):
-            val_a = df_a[metrica].sum()
-            val_b = df_b[metrica].sum()
-            diff = val_b - val_a
-            pct = (diff / val_a * 100) if val_a != 0 else 0
-            
-            cols_kpi[i].metric(metrica, f"{val_b:,.0f}", f"{diff:,.0f} ({pct:.1f}%)")
-            
-        st.markdown("---")
+    # KPIs
+    st.subheader(f"Resumen ({len(meses_sel)} periodos)")
+    cols = st.columns(len(valores_sel))
+    for i, metrica in enumerate(valores_sel):
+        valor = totales[metrica]
+        cols[i].metric(label=metrica, value=f"{valor:,.0f}")
 
-        # Gráfico Comparativo
-        group_a = df_a.groupby(filas_sel[0])[valores_sel[0]].sum().rename(f"{periodo_a}")
-        group_b = df_b.groupby(filas_sel[0])[valores_sel[0]].sum().rename(f"{periodo_b}")
-        df_chart = pd.concat([group_a, group_b], axis=1).fillna(0)
+    st.markdown("---")
+
+    # TABS
+    tab1, tab2 = st.tabs(["📊 Análisis Visual", "📄 Tabla Detallada"])
+
+    with tab1:
+        st.markdown(f"**Distribución por {filas_sel[0]}**")
+        chart_data = df_filtered.groupby(filas_sel[0])[valores_sel].sum()
+        st.bar_chart(chart_data, height=500, use_container_width=True)
+
+    with tab2:
+        tabla = pd.pivot_table(
+            df_filtered, 
+            index=filas_sel, 
+            values=valores_sel, 
+            aggfunc='sum', 
+            margins=True, 
+            margins_name='TOTAL GENERAL'
+        )
         
-        tab1, tab2 = st.tabs(["📊 Comparación Visual", "📄 Tabla de Variación"])
+        st.dataframe(
+            tabla.style.format("{:,.0f}").background_gradient(cmap='Blues'), 
+            use_container_width=True, 
+            height=600
+        )
         
-        with tab1:
-            st.bar_chart(df_chart, use_container_width=True)
-            
-        with tab2:
-            df_chart['Diferencia'] = df_chart.iloc[:, 1] - df_chart.iloc[:, 0]
-            df_chart['Var %'] = (df_chart['Diferencia'] / df_chart.iloc[:, 0]) * 100
-            
-            st.dataframe(
-                df_chart.style.format("{:,.0f}", subset=[df_chart.columns[0], df_chart.columns[1], 'Diferencia'])
-                .format("{:.1f}%", subset=['Var %'])
-                .background_gradient(cmap='RdYlGn', subset=['Diferencia']),
-                use_container_width=True, height=600
-            )
+        st.download_button(
+            "📥 Descargar Excel (CSV)", 
+            tabla.to_csv().encode('utf-8'), 
+            "reporte_filtrado.csv",
+            mime='text/csv'
+        )
 
 except Exception as e:
-    st.error("⚠️ Error al cargar datos. Verifica que el LINK sea correcto y público.")
-    st.expander("Detalle del error").write(e)
+    st.error("Error técnico:")
+    st.write(e)
