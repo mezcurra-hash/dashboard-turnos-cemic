@@ -10,7 +10,7 @@ hide_st_style = """
             <style>
             #MainMenu {visibility: hidden;}
             footer {visibility: hidden;}
-            header {visibility: hidden;}
+            /* header {visibility: hidden;}  <-- ESTA LINEA LA BORRAMOS O COMENTAMOS */
             [data-testid="stMetricDelta"] svg { display: inline; }
             </style>
             """
