@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 # --- CONFIGURACIÓN ---
 st.set_page_config(page_title="Gestión de Turnos", layout="wide", page_icon="🏥")
 
-st.title("🏥 Dashboard de Gestión - CEMIC")
+st.title("🏥 Oferta de Turnos Consultorio - CEMIC")
 st.markdown("---")
 
 # --- CARGA DE DATOS ---
