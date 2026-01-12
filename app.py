@@ -205,32 +205,54 @@ elif app_mode == "📉 Gestión de Ausentismo":
 
     @st.cache_data
     def cargar_ausencias():
-        # ✅ LINK INSERTADO CORRECTAMENTE
+        # TU LINK DE SIEMPRE
         url_ausencias = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQHFwl-Dxn-Rw9KN_evkCMk2Er8lQqgZMzAtN4LuEkWcCeBVUNwgb8xeIFKvpyxMgeGTeJ3oEWKpMZj/pub?gid=2132722842&single=true&output=csv"
         return pd.read_csv(url_ausencias)
 
     try:
         df_aus = cargar_ausencias()
         
-        # Limpieza básica
-        df_aus.columns = df_aus.columns.str.strip() # Limpiar espacios en nombres de columnas
+        # Limpieza
+        df_aus.columns = df_aus.columns.str.strip()
         df_aus['FECHA_INICIO'] = pd.to_datetime(df_aus['FECHA_INICIO'], dayfirst=True, errors='coerce')
         df_aus['DIAS_CAIDOS'] = pd.to_numeric(df_aus['DIAS_CAIDOS'], errors='coerce').fillna(0)
         
+        # Diccionario para nombres de meses
+        mapa_meses = {1:"Enero", 2:"Febrero", 3:"Marzo", 4:"Abril", 5:"Mayo", 6:"Junio", 
+                      7:"Julio", 8:"Agosto", 9:"Septiembre", 10:"Octubre", 11:"Noviembre", 12:"Diciembre"}
+
         # Filtros Sidebar
         with st.sidebar:
             st.header("🎛️ Filtros Ausentismo")
             
-            # Filtro Año automático
+            # 1. Filtro AÑO
             if not df_aus['FECHA_INICIO'].dropna().empty:
                 años = sorted(df_aus['FECHA_INICIO'].dt.year.dropna().unique())
                 año_sel = st.selectbox("Año:", años, index=len(años)-1)
                 df_filtered = df_aus[df_aus['FECHA_INICIO'].dt.year == año_sel]
             else:
-                st.warning("Revisa las fechas en el Excel.")
                 df_filtered = df_aus
 
-            # Filtros Dinámicos
+            # 2. NUEVO: Filtro MES
+            # Creamos una columna temporal de numero de mes
+            df_filtered['MES_NUM'] = df_filtered['FECHA_INICIO'].dt.month
+            meses_disponibles = sorted(df_filtered['MES_NUM'].dropna().unique())
+            
+            # Selector Multi (puedes elegir Enero y Febrero juntos)
+            meses_sel = st.multiselect(
+                "Mes(es):", 
+                options=meses_disponibles,
+                format_func=lambda x: mapa_meses.get(x, x),
+                default=meses_disponibles # Por defecto todos los disponibles del año
+            )
+            
+            # Aplicar filtro de mes
+            if meses_sel:
+                df_filtered = df_filtered[df_filtered['MES_NUM'].isin(meses_sel)]
+
+            st.divider()
+
+            # 3. Filtros Categóricos
             if 'DEPARTAMENTO' in df_filtered.columns:
                 depto = st.multiselect("Departamento:", sorted(df_filtered['DEPARTAMENTO'].astype(str).unique()))
                 if depto: df_filtered = df_filtered[df_filtered['DEPARTAMENTO'].isin(depto)]
@@ -244,19 +266,21 @@ elif app_mode == "📉 Gestión de Ausentismo":
                 if motivo: df_filtered = df_filtered[df_filtered['MOTIVO'].isin(motivo)]
 
         if df_filtered.empty:
-            st.info("No hay ausencias registradas con estos filtros.")
+            st.warning("⚠️ No hay ausencias registradas para esa selección de fechas.")
             st.stop()
 
-        # --- KPI PRINCIPALES ---
-        col1, col2, col3 = st.columns(3)
+        # --- KPI PRINCIPALES (MEJORADOS) ---
+        col1, col2, col3, col4 = st.columns(4)
+        
         total_dias = df_filtered['DIAS_CAIDOS'].sum()
-        total_casos = len(df_filtered)
-        # Moda del motivo (el más frecuente)
+        total_eventos = len(df_filtered) # Cantidad de filas (Licencias emitidas)
+        total_personas = df_filtered['PROFESIONAL'].nunique() # Cantidad de personas distintas
         top_motivo = df_filtered['MOTIVO'].mode()[0] if not df_filtered['MOTIVO'].empty else "-"
 
-        col1.metric("Total Días Caídos", f"{total_dias:,.0f}", help="Suma de días perdidos")
-        col2.metric("Cant. Licencias", f"{total_casos}")
-        col3.metric("Motivo Principal", str(top_motivo))
+        col1.metric("Total Días Caídos", f"{total_dias:,.0f}", help="Suma total de días que no hubo atención")
+        col2.metric("Eventos/Licencias", f"{total_eventos}", help="Cantidad de veces que se cargó una ausencia (Filas)")
+        col3.metric("Profesionales", f"{total_personas}", help="Cantidad de personas únicas que faltaron")
+        col4.metric("Motivo Principal", str(top_motivo))
         
         st.markdown("---")
 
@@ -269,8 +293,7 @@ elif app_mode == "📉 Gestión de Ausentismo":
             st.plotly_chart(fig_pie, use_container_width=True)
             
         with c2:
-            st.subheader("🏥 Top Servicios con más Ausencias")
-            # Agrupamos por servicio
+            st.subheader("🏥 Top Servicios (Días Caídos)")
             df_serv = df_filtered.groupby('SERVICIO')['DIAS_CAIDOS'].sum().reset_index().sort_values('DIAS_CAIDOS', ascending=True).tail(10)
             fig_bar = px.bar(df_serv, x='DIAS_CAIDOS', y='SERVICIO', orientation='h', text='DIAS_CAIDOS')
             fig_bar.update_traces(marker_color='#FF5252', textposition='outside')
@@ -278,7 +301,10 @@ elif app_mode == "📉 Gestión de Ausentismo":
 
         # --- TABLA DETALLADA ---
         with st.expander("📄 Ver Detalle de Registros"):
-            st.dataframe(df_filtered, use_container_width=True)
+            st.dataframe(
+                df_filtered[['FECHA_INICIO', 'FECHA_FIN', 'PROFESIONAL', 'SERVICIO', 'MOTIVO', 'DIAS_CAIDOS']], 
+                use_container_width=True
+            )
 
     except Exception as e:
         st.error("Hubo un error cargando Ausentismo.")
