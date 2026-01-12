@@ -152,7 +152,7 @@ if app_mode == "🏥 Oferta de Turnos":
     except Exception as e: st.error(f"Error en Turnos: {e}")
 
 # ==============================================================================
-# APP 2: CALL CENTER (INTACTO)
+# APP 2: CALL CENTER (RESTAURADO AL DISEÑO ORIGINAL 🎨)
 # ==============================================================================
 elif app_mode == "🎧 Call Center":
     st.title("🎧 Call Center - CEMIC")
@@ -162,11 +162,13 @@ elif app_mode == "🎧 Call Center":
     def cargar_datos_cc():
         url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTOxpr7RRNTLGO96pUK8HJ0iy2ZHeqNpiR7OelleljCVoWPuJCO26q5z66VisWB76khl7Tmsqh5CqNC/pub?gid=0&single=true&output=csv"
         df = pd.read_csv(url, dtype=str).fillna(0)
+        # Limpieza de columnas numéricas
         cols = ['RECIBIDAS_FIN', 'ATENDIDAS_FIN', 'PERDIDAS_FIN', 'RECIBIDAS_PREPAGO', 'ATENDIDAS_PREPAGO', 'PERDIDAS_PREPAGO', 'TURNOS_TOTAL_TEL', 'TURNOS_CONS_TEL', 'TURNOS_PRACT_TEL']
         for c in cols: 
             if c in df.columns: df[c] = pd.to_numeric(df[c].str.replace('.','', regex=False), errors='coerce').fillna(0)
         return df
 
+    # Función para leer fechas tipo "Ene-2025" o "Jan-2025"
     def parsear_fecha_custom(texto_fecha):
         if pd.isna(texto_fecha): return None
         texto = str(texto_fecha).lower().strip().replace(".", "")
@@ -184,50 +186,102 @@ elif app_mode == "🎧 Call Center":
         df = cargar_datos_cc()
         df['FECHA_REAL'] = df['MES'].apply(parsear_fecha_custom)
         df = df.dropna(subset=['FECHA_REAL']).sort_values('FECHA_REAL')
+        
+        # Totales calculados
         df['TOTAL_LLAMADAS'] = df['RECIBIDAS_FIN'] + df['RECIBIDAS_PREPAGO']
         df['TOTAL_ATENDIDAS'] = df['ATENDIDAS_FIN'] + df['ATENDIDAS_PREPAGO']
         df['TOTAL_PERDIDAS'] = df['PERDIDAS_FIN'] + df['PERDIDAS_PREPAGO']
         
         with st.sidebar:
-            st.header("📞 Filtros CC")
-            modo = st.radio("Análisis:", ["📅 Mensual", "🔄 Interanual"])
-            segmento = st.selectbox("Tipo:", ["Todo Unificado", "Solo Financiadores", "Solo Prepago"])
+            st.header("📞 Panel de Control") # Volvimos al nombre viejo
+            
+            # Selector de Modo con Iconos como en la foto
+            modo = st.radio("Modo de Análisis:", ["📅 Evolución Mensual", "🔄 Comparativa Interanual"])
+            
+            st.divider()
+            
+            # Filtro de Tipo (Cosmético por ahora si no hay datos desagregados, pero mantiene la estética)
+            segmento = st.selectbox("Filtrar por Tipo:", ["Todo Unificado", "Solo Financiadores", "Solo Prepago"])
 
-        if modo == "📅 Mensual":
+        # ---------------------------------------------------------
+        # VISTA 1: EVOLUCIÓN MENSUAL (La clásica)
+        # ---------------------------------------------------------
+        if modo == "📅 Evolución Mensual":
+            # Selector de Mes
             fechas = sorted(df['FECHA_REAL'].unique(), reverse=True)
-            sel = st.selectbox("Mes:", fechas, format_func=lambda x: x.strftime("%B-%Y").capitalize())
+            sel = st.selectbox("Seleccionar Mes:", fechas, format_func=lambda x: x.strftime("%B-%Y").capitalize())
+            
+            # Filtramos la fila exacta
             d = df[df['FECHA_REAL'] == sel].iloc[0]
             
+            # Lógica de segmentos
             if segmento == "Solo Financiadores": rec, aten, perd = d['RECIBIDAS_FIN'], d['ATENDIDAS_FIN'], d['PERDIDAS_FIN']
             elif segmento == "Solo Prepago": rec, aten, perd = d['RECIBIDAS_PREPAGO'], d['ATENDIDAS_PREPAGO'], d['PERDIDAS_PREPAGO']
             else: rec, aten, perd = d['TOTAL_LLAMADAS'], d['TOTAL_ATENDIDAS'], d['TOTAL_PERDIDAS']
             
             sla = (aten/rec*100) if rec>0 else 0
-            c1, c2, c3, c4 = st.columns(4)
-            c1.metric("📞 Recibidas", f"{rec:,.0f}")
-            c2.metric("✅ Atendidas", f"{aten:,.0f}")
-            c3.metric("❌ Perdidas", f"{perd:,.0f}", delta_color="inverse", delta=f"{(perd/rec*100):.1f}%")
-            c4.metric("📊 SLA", f"{sla:.1f}%", delta="Meta >90%")
+            
+            # TARJETAS DE KPIs (Con colores oscuros como en la foto)
+            k1, k2, k3, k4 = st.columns(4)
+            k1.metric("📞 Llamadas Recibidas", f"{rec:,.0f}")
+            k2.metric("✅ Atendidas", f"{aten:,.0f}", f"{(aten/rec*100):.1f}% Eficiencia")
+            k3.metric("❌ Perdidas (Abandono)", f"{perd:,.0f}", f"-{(perd/rec*100):.1f}%", delta_color="inverse")
+            k4.metric("📊 Nivel de Servicio", f"{sla:.1f}%", "Meta > 90%")
+            
             st.markdown("---")
+            
+            # GRÁFICOS (Recuperando el diseño de 3 barras)
             col1, col2 = st.columns(2)
+            
             with col1:
-                fig = px.pie(names=['Atendidas', 'Perdidas'], values=[aten, perd], color_discrete_sequence=['#4CAF50', '#FF5252'], hole=0.4)
-                st.plotly_chart(fig, use_container_width=True)
-            with col2:
-                dat_bar = {'Tipo': ['Consultorios', 'Prácticas'], 'Cant': [d['TURNOS_CONS_TEL'], d['TURNOS_PRACT_TEL']]}
-                st.plotly_chart(px.bar(dat_bar, x='Tipo', y='Cant'), use_container_width=True)
+                st.subheader("Nivel de Atención")
+                # Gráfico de Dona Verde/Rojo
+                fig_pie = px.pie(names=['Atendidas', 'Perdidas'], values=[aten, perd], 
+                             color_discrete_sequence=['#4CAF50', '#FF5252'], hole=0.4)
+                fig_pie.update_layout(showlegend=True)
+                st.plotly_chart(fig_pie, use_container_width=True)
 
+            with col2:
+                st.subheader("Cantidad de turnos (Ts y AS)")
+                # AQUÍ ESTÁ LA MAGIA: Recuperamos la barra 'TOTAL' y los colores exactos
+                dat_bar = {
+                    'Concepto': ['Consultorios (Tel)', 'Prácticas (Tel)', 'Total (Tel)'],
+                    'Cantidad': [d['TURNOS_CONS_TEL'], d['TURNOS_PRACT_TEL'], d['TURNOS_TOTAL_TEL']],
+                    'Color': ['#64B5F6', '#1976D2', '#FF8A80'] # Celeste, Azul, Rosa (Como en tu foto)
+                }
+                
+                fig_bar = px.bar(dat_bar, x='Concepto', y='Cantidad', text='Cantidad')
+                fig_bar.update_traces(marker_color=['#64B5F6', '#0D47A1', '#FF8A80'], textposition='auto')
+                st.plotly_chart(fig_bar, use_container_width=True)
+
+        # ---------------------------------------------------------
+        # VISTA 2: COMPARATIVA INTERANUAL (La del gráfico de barras agrupado)
+        # ---------------------------------------------------------
         else: 
+            st.subheader("🔄 Análisis Interanual (Mismo mes, distintos años)")
+            
             meses_n = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
-            m_nom = st.selectbox("Mes a comparar:", meses_n)
+            m_nom = st.selectbox("¿Qué mes quieres comparar?", meses_n)
             m_num = meses_n.index(m_nom) + 1
+            
+            # Filtramos todos los años para ese mes
             df_i = df[df['FECHA_REAL'].dt.month == m_num].copy()
-            if df_i.empty: st.warning("Sin datos."); st.stop()
-            df_i['AÑO'] = df_i['FECHA_REAL'].dt.year.astype(str)
-            fig = go.Figure()
-            fig.add_trace(go.Bar(x=df_i['AÑO'], y=df_i['TOTAL_ATENDIDAS'], name='Atendidas', marker_color='#4CAF50'))
-            fig.add_trace(go.Bar(x=df_i['AÑO'], y=df_i['TOTAL_PERDIDAS'], name='Perdidas', marker_color='#FF5252'))
-            st.plotly_chart(fig, use_container_width=True)
+            
+            if df_i.empty:
+                st.warning("No hay datos históricos para este mes todavía.")
+            else:
+                df_i['AÑO'] = df_i['FECHA_REAL'].dt.year.astype(str)
+                
+                # Gráfico Comparativo (Barras Agrupadas: Verde vs Rojo)
+                fig = go.Figure()
+                fig.add_trace(go.Bar(x=df_i['AÑO'], y=df_i['TOTAL_ATENDIDAS'], name='Atendidas', marker_color='#4CAF50'))
+                fig.add_trace(go.Bar(x=df_i['AÑO'], y=df_i['TOTAL_PERDIDAS'], name='Perdidas', marker_color='#FF5252'))
+                
+                fig.update_layout(barmode='group', title=f"Desempeño en {m_nom} (2023 - 2026)")
+                st.plotly_chart(fig, use_container_width=True)
+                
+                with st.expander("Ver Datos Históricos"):
+                    st.dataframe(df_i[['AÑO', 'TOTAL_LLAMADAS', 'TOTAL_ATENDIDAS', 'TOTAL_PERDIDAS']], use_container_width=True)
 
     except Exception as e: st.error(f"Error en CC: {e}")
 
