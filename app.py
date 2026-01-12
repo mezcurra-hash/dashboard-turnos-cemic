@@ -6,12 +6,12 @@ import plotly.graph_objects as go
 # --- CONFIGURACIÓN GLOBAL ---
 st.set_page_config(page_title="Tablero de Gestión CEMIC", layout="wide", page_icon="🏥")
 
+# Estilos CSS
 st.markdown("""
 <style>
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     [data-testid="stMetricDelta"] svg { display: inline; }
-    /* Estilo para tarjetas oscuras */
     div[data-testid="stMetric"] {
         background-color: #262730;
         border: 1px solid #464b5f;
@@ -21,16 +21,16 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- MENÚ DE NAVEGACIÓN ---
+# --- MENÚ LATERAL ---
 with st.sidebar:
     st.image("https://cemic.edu.ar/assets/img/logo/logo-cemic.png", width=150)
     st.title("Navegación")
-    app_mode = st.selectbox("Selecciona el Tablero:", 
+    app_mode = st.selectbox("Ir a:", 
                            ["🏥 Oferta de Turnos", "🎧 Call Center", "📉 Gestión de Ausentismo"])
     st.markdown("---")
 
 # ==============================================================================
-# APP 1: OFERTA DE TURNOS
+# APP 1: OFERTA DE TURNOS (RESTAURADA A SU GLORIA ORIGINAL 🌟)
 # ==============================================================================
 if app_mode == "🏥 Oferta de Turnos":
     st.title("🏥 Oferta de Turnos de Consultorio")
@@ -43,22 +43,21 @@ if app_mode == "🏥 Oferta de Turnos":
 
     try:
         df = cargar_datos_oferta()
-        df.columns = df.columns.str.strip() # Limpieza de espacios
+        df.columns = df.columns.str.strip()
         df['PERIODO'] = pd.to_datetime(df['PERIODO'], dayfirst=True, errors='coerce')
         df = df.dropna(subset=['PERIODO'])
 
         def formato_fecha_linda(fecha):
-            meses = {1:"Ene", 2:"Feb", 3:"Mar", 4:"Abr", 5:"May", 6:"Jun", 7:"Jul", 8:"Ago", 9:"Sep", 10:"Oct", 11:"Nov", 12:"Dic"}
+            meses = {1:"Enero", 2:"Febrero", 3:"Marzo", 4:"Abril", 5:"Mayo", 6:"Junio", 7:"Julio", 8:"Agosto", 9:"Septiembre", 10:"Octubre", 11:"Noviembre", 12:"Diciembre"}
             return f"{meses[fecha.month]}-{fecha.year}"
 
+        # --- FILTROS COMPLETOS (RECUPERADOS) ---
         with st.sidebar:
-            st.header("🎛️ Filtros Turnos")
+            st.header("🎛️ Configuración Turnos")
             modo_analisis = st.radio("Vista:", ["📊 Global", "🆚 Comparativa"], horizontal=True)
             fechas_unicas = sorted(df['PERIODO'].unique())
             
-            if not fechas_unicas:
-                st.error("No hay fechas válidas.")
-                st.stop()
+            if not fechas_unicas: st.error("Error en fechas."); st.stop()
 
             if modo_analisis == "📊 Global":
                 meses_sel = st.multiselect("Periodo:", options=fechas_unicas, default=[fechas_unicas[0]], format_func=formato_fecha_linda)
@@ -69,6 +68,9 @@ if app_mode == "🏥 Oferta de Turnos":
                 periodo_b = c2.selectbox("Actual:", fechas_unicas, index=len(fechas_unicas)-1, format_func=formato_fecha_linda)
                 meses_sel = [periodo_a, periodo_b]
 
+            st.divider()
+
+            # FILTROS ESPECÍFICOS
             with st.expander("🔍 Filtros Avanzados", expanded=False):
                 filtro_tipo = st.radio("Modalidad:", ["Todos", "Programada (AP)", "No Programada (ANP)"], horizontal=True)
                 depto = st.multiselect("Depto:", sorted(df['DEPARTAMENTO'].astype(str).unique()))
@@ -76,10 +78,21 @@ if app_mode == "🏥 Oferta de Turnos":
                 sede = st.multiselect("Sede:", sorted(df['SEDE'].astype(str).unique()))
                 prof = st.multiselect("Profesional:", sorted(df['PROFESIONAL/EQUIPO'].astype(str).unique()))
 
-        if not meses_sel: st.stop()
+            st.divider()
+
+            # SELECTORES DE AGRUPACIÓN (¡ESTO ES LO QUE FALTABA!)
+            cols_texto = df.select_dtypes(include=['object']).columns.tolist()
+            default_fila = ['SERVICIO'] if 'SERVICIO' in cols_texto else [cols_texto[0]]
+            filas_sel = st.multiselect("Agrupar por:", cols_texto, default=default_fila)
+            
+            cols_num = df.select_dtypes(include=['float', 'int']).columns.tolist()
+            val_sel = st.multiselect("Métricas:", cols_num, default=['TURNOS_MENSUAL'] if 'TURNOS_MENSUAL' in cols_num else [cols_num[0]])
+
+        # --- LÓGICA DE FILTRADO ---
+        if not meses_sel or not filas_sel or not val_sel: st.warning("Selecciona opciones."); st.stop()
+
         df_f = df[df['PERIODO'].isin(meses_sel)]
-        
-        # Lógica de Tipo de Atención
+
         if filtro_tipo == "Programada (AP)" and 'TIPO_ATENCION' in df_f.columns:
             df_f = df_f[df_f['TIPO_ATENCION'] == 'AP']
         elif filtro_tipo == "No Programada (ANP)" and 'TIPO_ATENCION' in df_f.columns:
@@ -92,25 +105,54 @@ if app_mode == "🏥 Oferta de Turnos":
 
         if df_f.empty: st.error("Sin datos."); st.stop()
 
-        # VISUALIZACIÓN
-        metrica = 'TURNOS_MENSUAL'
+        # --- VISUALIZACIÓN ORIGINAL ---
         if modo_analisis == "📊 Global":
-            total = df_f[metrica].sum()
-            st.metric("Total Turnos", f"{total:,.0f}")
-            st.bar_chart(df_f.groupby('SERVICIO')[metrica].sum())
-        else:
-            df_a, df_b = df_f[df_f['PERIODO']==periodo_a], df_f[df_f['PERIODO']==periodo_b]
-            va, vb = df_a[metrica].sum(), df_b[metrica].sum()
-            st.metric("Variación Turnos", f"{vb:,.0f}", f"{vb-va:,.0f} ({(vb-va)/va*100:.1f}%)")
+            totales = df_f[val_sel].sum()
+            nombres_meses = [formato_fecha_linda(m) for m in meses_sel]
+            st.subheader(f"Resumen ({filtro_tipo}): {', '.join(nombres_meses)}")
             
-            ga = df_a.groupby('SERVICIO')[metrica].sum().rename("Base")
-            gb = df_b.groupby('SERVICIO')[metrica].sum().rename("Actual")
-            st.bar_chart(pd.concat([ga, gb], axis=1).fillna(0))
+            cols = st.columns(len(val_sel))
+            for i, metrica in enumerate(val_sel):
+                cols[i].metric(metrica, f"{totales[metrica]:,.0f}")
+            
+            st.markdown("---")
+            t1, t2 = st.tabs(["📊 Gráfico", "📄 Tabla Dinámica"])
+            with t1:
+                st.bar_chart(df_f.groupby(filas_sel[0])[val_sel].sum())
+            with t2:
+                tabla = pd.pivot_table(df_f, index=filas_sel, values=val_sel, aggfunc='sum', margins=True, margins_name='TOTAL')
+                st.dataframe(tabla.style.format("{:,.0f}").background_gradient(cmap='Blues'), use_container_width=True)
+
+        else: # Comparativa
+            nombre_a = formato_fecha_linda(periodo_a)
+            nombre_b = formato_fecha_linda(periodo_b)
+            st.subheader(f"🆚 Comparativa ({filtro_tipo}): {nombre_a} vs {nombre_b}")
+            
+            df_a, df_b = df_f[df_f['PERIODO']==periodo_a], df_f[df_f['PERIODO']==periodo_b]
+            
+            cols = st.columns(len(val_sel))
+            for i, metrica in enumerate(val_sel):
+                va, vb = df_a[metrica].sum(), df_b[metrica].sum()
+                delta = vb - va
+                pct = (delta/va*100) if va>0 else 0
+                cols[i].metric(metrica, f"{vb:,.0f}", f"{delta:,.0f} ({pct:.1f}%)")
+            
+            st.markdown("---")
+            ga = df_a.groupby(filas_sel[0])[val_sel[0]].sum().rename(nombre_a)
+            gb = df_b.groupby(filas_sel[0])[val_sel[0]].sum().rename(nombre_b)
+            df_chart = pd.concat([ga, gb], axis=1).fillna(0)
+            
+            t1, t2 = st.tabs(["📊 Comparación", "📄 Variación"])
+            with t1:
+                st.bar_chart(df_chart)
+            with t2:
+                df_chart['Diferencia'] = df_chart.iloc[:,1] - df_chart.iloc[:,0]
+                st.dataframe(df_chart.style.format("{:,.0f}").background_gradient(cmap='RdYlGn', subset=['Diferencia']), use_container_width=True)
 
     except Exception as e: st.error(f"Error en Turnos: {e}")
 
 # ==============================================================================
-# APP 2: CALL CENTER (LÓGICA ROBUSTA)
+# APP 2: CALL CENTER (INTACTO)
 # ==============================================================================
 elif app_mode == "🎧 Call Center":
     st.title("🎧 Call Center - CEMIC")
@@ -142,18 +184,15 @@ elif app_mode == "🎧 Call Center":
         df = cargar_datos_cc()
         df['FECHA_REAL'] = df['MES'].apply(parsear_fecha_custom)
         df = df.dropna(subset=['FECHA_REAL']).sort_values('FECHA_REAL')
-        
         df['TOTAL_LLAMADAS'] = df['RECIBIDAS_FIN'] + df['RECIBIDAS_PREPAGO']
         df['TOTAL_ATENDIDAS'] = df['ATENDIDAS_FIN'] + df['ATENDIDAS_PREPAGO']
         df['TOTAL_PERDIDAS'] = df['PERDIDAS_FIN'] + df['PERDIDAS_PREPAGO']
         
-        # --- Sidebar CC ---
         with st.sidebar:
-            st.header("📞 Filtros Call Center")
+            st.header("📞 Filtros CC")
             modo = st.radio("Análisis:", ["📅 Mensual", "🔄 Interanual"])
             segmento = st.selectbox("Tipo:", ["Todo Unificado", "Solo Financiadores", "Solo Prepago"])
 
-        # --- Visual CC ---
         if modo == "📅 Mensual":
             fechas = sorted(df['FECHA_REAL'].unique(), reverse=True)
             sel = st.selectbox("Mes:", fechas, format_func=lambda x: x.strftime("%B-%Y").capitalize())
@@ -169,26 +208,22 @@ elif app_mode == "🎧 Call Center":
             c2.metric("✅ Atendidas", f"{aten:,.0f}")
             c3.metric("❌ Perdidas", f"{perd:,.0f}", delta_color="inverse", delta=f"{(perd/rec*100):.1f}%")
             c4.metric("📊 SLA", f"{sla:.1f}%", delta="Meta >90%")
-            
             st.markdown("---")
             col1, col2 = st.columns(2)
             with col1:
-                st.subheader("Distribución")
                 fig = px.pie(names=['Atendidas', 'Perdidas'], values=[aten, perd], color_discrete_sequence=['#4CAF50', '#FF5252'], hole=0.4)
                 st.plotly_chart(fig, use_container_width=True)
             with col2:
-                st.subheader("Tipos de Turnos (Tel)")
                 dat_bar = {'Tipo': ['Consultorios', 'Prácticas'], 'Cant': [d['TURNOS_CONS_TEL'], d['TURNOS_PRACT_TEL']]}
                 st.plotly_chart(px.bar(dat_bar, x='Tipo', y='Cant'), use_container_width=True)
 
-        else: # Interanual
+        else: 
             meses_n = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
             m_nom = st.selectbox("Mes a comparar:", meses_n)
             m_num = meses_n.index(m_nom) + 1
             df_i = df[df['FECHA_REAL'].dt.month == m_num].copy()
             if df_i.empty: st.warning("Sin datos."); st.stop()
             df_i['AÑO'] = df_i['FECHA_REAL'].dt.year.astype(str)
-            
             fig = go.Figure()
             fig.add_trace(go.Bar(x=df_i['AÑO'], y=df_i['TOTAL_ATENDIDAS'], name='Atendidas', marker_color='#4CAF50'))
             fig.add_trace(go.Bar(x=df_i['AÑO'], y=df_i['TOTAL_PERDIDAS'], name='Perdidas', marker_color='#FF5252'))
@@ -197,7 +232,7 @@ elif app_mode == "🎧 Call Center":
     except Exception as e: st.error(f"Error en CC: {e}")
 
 # ==============================================================================
-# APP 3: GESTIÓN DE AUSENTISMO (¡CONECTADO!)
+# APP 3: GESTIÓN DE AUSENTISMO (LEEMOS TU COLUMNA MANUAL EXCEL)
 # ==============================================================================
 elif app_mode == "📉 Gestión de Ausentismo":
     st.title("📉 Tablero de Ausentismo y Licencias")
@@ -205,26 +240,30 @@ elif app_mode == "📉 Gestión de Ausentismo":
 
     @st.cache_data
     def cargar_ausencias():
-        # TU LINK
-        url_ausencias = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQHFwl-Dxn-Rw9KN_evkCMk2Er8lQqgZMzAtN4LuEkWcCeBVUNwgb8xeIFKvpyxMgeGTeJ3oEWKpMZj/pub?gid=2132722842&single=true&output=csv"
-        return pd.read_csv(url_ausencias)
+        # Link BD_AUSENCIAS
+        url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQHFwl-Dxn-Rw9KN_evkCMk2Er8lQqgZMzAtN4LuEkWcCeBVUNwgb8xeIFKvpyxMgeGTeJ3oEWKpMZj/pub?gid=2132722842&single=true&output=csv"
+        return pd.read_csv(url)
 
     try:
         df_aus = cargar_ausencias()
-        
-        # Limpieza
         df_aus.columns = df_aus.columns.str.strip()
         df_aus['FECHA_INICIO'] = pd.to_datetime(df_aus['FECHA_INICIO'], dayfirst=True, errors='coerce')
-        df_aus['DIAS_CAIDOS'] = pd.to_numeric(df_aus['DIAS_CAIDOS'], errors='coerce').fillna(0)
         
-        mapa_meses = {1:"Enero", 2:"Febrero", 3:"Marzo", 4:"Abril", 5:"Mayo", 6:"Junio", 
-                      7:"Julio", 8:"Agosto", 9:"Septiembre", 10:"Octubre", 11:"Noviembre", 12:"Diciembre"}
+        # BUSCAMOS TU COLUMNA MANUAL 'CONSULTORIOS_REALES'
+        col_target = 'CONSULTORIOS_REALES'
+        if col_target not in df_aus.columns:
+            col_target = 'DIAS_CAIDOS' # Fallback si no está la columna
+            st.warning("⚠️ Usando 'DIAS_CAIDOS' porque no encontré 'CONSULTORIOS_REALES'.")
+        
+        # Limpieza de números
+        if df_aus[col_target].dtype == 'object':
+            df_aus[col_target] = pd.to_numeric(df_aus[col_target].str.replace('.', '', regex=False), errors='coerce').fillna(0)
+        else:
+            df_aus[col_target] = pd.to_numeric(df_aus[col_target], errors='coerce').fillna(0)
 
-        # --- BARRA LATERAL (FILTROS) ---
         with st.sidebar:
             st.header("🎛️ Filtros Ausentismo")
-            
-            # 1. Filtro Año
+            # Año
             if not df_aus['FECHA_INICIO'].dropna().empty:
                 años = sorted(df_aus['FECHA_INICIO'].dt.year.dropna().unique())
                 año_sel = st.selectbox("Año:", años, index=len(años)-1)
@@ -232,99 +271,49 @@ elif app_mode == "📉 Gestión de Ausentismo":
             else:
                 df_filtered = df_aus
 
-            # 2. Filtro Mes
+            # Mes
+            mapa_meses = {1:"Enero", 2:"Febrero", 3:"Marzo", 4:"Abril", 5:"Mayo", 6:"Junio", 7:"Julio", 8:"Agosto", 9:"Septiembre", 10:"Octubre", 11:"Noviembre", 12:"Diciembre"}
             df_filtered['MES_NUM'] = df_filtered['FECHA_INICIO'].dt.month
-            meses_disponibles = sorted(df_filtered['MES_NUM'].dropna().unique())
+            meses_disp = sorted(df_filtered['MES_NUM'].dropna().unique())
+            meses_sel = st.multiselect("Mes(es):", options=meses_disp, format_func=lambda x: mapa_meses.get(x,x), default=meses_disp)
+            if meses_sel: df_filtered = df_filtered[df_filtered['MES_NUM'].isin(meses_sel)]
             
-            meses_sel = st.multiselect(
-                "Mes(es):", 
-                options=meses_disponibles,
-                format_func=lambda x: mapa_meses.get(x, x),
-                default=meses_disponibles
-            )
-            
-            if meses_sel:
-                df_filtered = df_filtered[df_filtered['MES_NUM'].isin(meses_sel)]
-
             st.divider()
+            for col in ['DEPARTAMENTO', 'SERVICIO', 'MOTIVO', 'PROFESIONAL']:
+                if col in df_filtered.columns:
+                    opciones = sorted(df_filtered[col].astype(str).unique())
+                    sel = st.multiselect(f"{col.title()}:", opciones)
+                    if sel: df_filtered = df_filtered[df_filtered[col].isin(sel)]
 
-            # 3. Filtros Categóricos
-            if 'DEPARTAMENTO' in df_filtered.columns:
-                depto = st.multiselect("Departamento:", sorted(df_filtered['DEPARTAMENTO'].astype(str).unique()))
-                if depto: df_filtered = df_filtered[df_filtered['DEPARTAMENTO'].isin(depto)]
-            
-            if 'SERVICIO' in df_filtered.columns:
-                servicio = st.multiselect("Servicio:", sorted(df_filtered['SERVICIO'].astype(str).unique()))
-                if servicio: df_filtered = df_filtered[df_filtered['SERVICIO'].isin(servicio)]
-            
-            # === NUEVO FILTRO: PROFESIONAL ===
-            if 'PROFESIONAL' in df_filtered.columns:
-                # Ordenamos alfabéticamente
-                lista_profs = sorted(df_filtered['PROFESIONAL'].astype(str).unique())
-                prof_sel = st.multiselect("Profesional:", lista_profs)
-                if prof_sel: df_filtered = df_filtered[df_filtered['PROFESIONAL'].isin(prof_sel)]
-            # =================================
-            
-            if 'MOTIVO' in df_filtered.columns:
-                motivo = st.multiselect("Motivo:", sorted(df_filtered['MOTIVO'].astype(str).unique()))
-                if motivo: df_filtered = df_filtered[df_filtered['MOTIVO'].isin(motivo)]
+        if df_filtered.empty: st.warning("Sin datos."); st.stop()
 
-        if df_filtered.empty:
-            st.warning("⚠️ No hay datos para esa selección.")
-            st.stop()
-
-        # --- KPI PRINCIPALES ---
         col1, col2, col3, col4 = st.columns(4)
-        
-        total_dias = df_filtered['DIAS_CAIDOS'].sum()
-        total_eventos = len(df_filtered)
-        total_personas = df_filtered['PROFESIONAL'].nunique()
+        total_consultorios = df_filtered[col_target].sum()
         top_motivo = df_filtered['MOTIVO'].mode()[0] if not df_filtered['MOTIVO'].empty else "-"
 
-        # Cambiamos el nombre de la métrica para evitar confusión
-        col1.metric("Consultorios Cancelados", f"{total_dias:,.0f}", help="Cantidad estimada de consultorios suspendidos en base a los días de licencia tomados")
-        col2.metric("Eventos/Licencias", f"{total_eventos}")
-        col3.metric("Profesionales Únicos", f"{total_personas}")
+        col1.metric("Consultorios Cancelados", f"{total_consultorios:,.0f}", help="Suma de la columna manual del Excel.")
+        col2.metric("Eventos/Licencias", f"{len(df_filtered)}")
+        col3.metric("Profesionales Únicos", f"{df_filtered['PROFESIONAL'].nunique()}")
         col4.metric("Motivo Principal", str(top_motivo))
-        
         st.markdown("---")
 
-        # --- GRÁFICOS NIVEL 1 ---
         c1, c2 = st.columns(2)
-        
         with c1:
-            st.subheader("🍰 Distribución por Motivo")
-            fig_pie = px.pie(df_filtered, values='DIAS_CAIDOS', names='MOTIVO', hole=0.4)
-            st.plotly_chart(fig_pie, use_container_width=True)
-            
+            st.plotly_chart(px.pie(df_filtered, values=col_target, names='MOTIVO', hole=0.4), use_container_width=True)
         with c2:
-            st.subheader("🏥 Top Servicios (Días Caídos)")
-            df_serv = df_filtered.groupby('SERVICIO')['DIAS_CAIDOS'].sum().reset_index().sort_values('DIAS_CAIDOS', ascending=True).tail(10)
-            fig_bar = px.bar(df_serv, x='DIAS_CAIDOS', y='SERVICIO', orientation='h', text='DIAS_CAIDOS')
+            d_serv = df_filtered.groupby('SERVICIO')[col_target].sum().reset_index().sort_values(col_target).tail(10)
+            fig_bar = px.bar(d_serv, x=col_target, y='SERVICIO', orientation='h', text=col_target)
             fig_bar.update_traces(marker_color='#FF5252', textposition='outside')
             st.plotly_chart(fig_bar, use_container_width=True)
 
-        # --- GRÁFICOS NIVEL 2 (NUEVO) ---
-        st.subheader("🥇 Top Profesionales con más Ausencias")
-        st.caption("Ranking de profesionales ordenado por cantidad de días acumulados de licencia en el periodo seleccionado.")
-        
-        # Agrupamos por profesional y sumamos días
-        df_prof_rank = df_filtered.groupby('PROFESIONAL')['DIAS_CAIDOS'].sum().reset_index()
-        # Ordenamos y tomamos el Top 15 para que no sea gigante
-        df_prof_rank = df_prof_rank.sort_values('DIAS_CAIDOS', ascending=True).tail(15)
-        
-        fig_prof = px.bar(df_prof_rank, x='DIAS_CAIDOS', y='PROFESIONAL', orientation='h', text='DIAS_CAIDOS')
-        fig_prof.update_traces(marker_color='#42A5F5', textposition='outside') # Color azulito distinto
-        fig_prof.update_layout(height=500) # Un poco más alto para que entren los nombres
+        st.subheader("🥇 Top Profesionales")
+        d_prof = df_filtered.groupby('PROFESIONAL')[col_target].sum().reset_index().sort_values(col_target).tail(15)
+        fig_prof = px.bar(d_prof, x=col_target, y='PROFESIONAL', orientation='h', text=col_target)
+        fig_prof.update_traces(marker_color='#42A5F5', textposition='outside')
+        fig_prof.update_layout(height=500)
         st.plotly_chart(fig_prof, use_container_width=True)
 
-        # --- TABLA DETALLE ---
-        with st.expander("📄 Ver Detalle de Registros"):
-            st.dataframe(
-                df_filtered[['FECHA_INICIO', 'FECHA_FIN', 'PROFESIONAL', 'SERVICIO', 'MOTIVO', 'DIAS_CAIDOS']], 
-                use_container_width=True
-            )
+        with st.expander("📄 Ver Datos"):
+            st.dataframe(df_filtered, use_container_width=True)
 
-    except Exception as e:
-        st.error("Hubo un error cargando Ausentismo.")
-        st.write(f"Detalle técnico: {e}")
+    except Exception as e: st.error(f"Error: {e}")
