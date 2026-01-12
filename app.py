@@ -282,7 +282,7 @@ elif app_mode == "📉 Gestión de Ausentismo":
         top_motivo = df_filtered['MOTIVO'].mode()[0] if not df_filtered['MOTIVO'].empty else "-"
 
         # Cambiamos el nombre de la métrica para evitar confusión
-        col1.metric("Suma Días Ausencia", f"{total_dias:,.0f}", help="Suma acumulada de días perdidos por todos los profesionales (Días-Hombre)")
+        col1.metric("Consultorios Cancelados", f"{total_dias:,.0f}", help="Cantidad estimada de consultorios suspendidos en base a los días de licencia tomados.")
         col2.metric("Eventos/Licencias", f"{total_eventos}")
         col3.metric("Profesionales Únicos", f"{total_personas}")
         col4.metric("Motivo Principal", str(top_motivo))
