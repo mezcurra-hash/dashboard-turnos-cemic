@@ -203,97 +203,28 @@ elif app_mode == "📉 Gestión de Ausentismo":
     st.title("📉 Tablero de Ausentismo y Licencias")
     st.markdown("---")
 
-    # 1. CARGA DE AUSENCIAS
     @st.cache_data
     def cargar_ausencias():
-        url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQHFwl-Dxn-Rw9KN_evkCMk2Er8lQqgZMzAtN4LuEkWcCeBVUNwgb8xeIFKvpyxMgeGTeJ3oEWKpMZj/pub?gid=2132722842&single=true&output=csv"
-        return pd.read_csv(url)
-
-    # 2. CARGA DE AGENDA (Para saber qué días trabaja cada uno)
-    @st.cache_data
-    def cargar_agenda_profs():
-        # Usamos el mismo link de la Oferta de Turnos que tiene la columna DIA_SEMANA
-        url_agenda = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQHFwl-Dxn-Rw9KN_evkCMk2Er8lQqgZMzAtN4LuEkWcCeBVUNwgb8xeIFKvpyxMgeGTeJ3oEWKpMZj/pub?gid=1524527213&single=true&output=csv"
-        return pd.read_csv(url_agenda)
+        # TU LINK
+        url_ausencias = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQHFwl-Dxn-Rw9KN_evkCMk2Er8lQqgZMzAtN4LuEkWcCeBVUNwgb8xeIFKvpyxMgeGTeJ3oEWKpMZj/pub?gid=2132722842&single=true&output=csv"
+        return pd.read_csv(url_ausencias)
 
     try:
         df_aus = cargar_ausencias()
-        df_agenda = cargar_agenda_profs()
         
-        # --- LIMPIEZA Y PREPARACIÓN ---
+        # Limpieza
         df_aus.columns = df_aus.columns.str.strip()
-        df_agenda.columns = df_agenda.columns.str.strip()
-
-        # Convertir fechas
         df_aus['FECHA_INICIO'] = pd.to_datetime(df_aus['FECHA_INICIO'], dayfirst=True, errors='coerce')
-        df_aus['FECHA_FIN'] = pd.to_datetime(df_aus['FECHA_FIN'], dayfirst=True, errors='coerce')
+        df_aus['DIAS_CAIDOS'] = pd.to_numeric(df_aus['DIAS_CAIDOS'], errors='coerce').fillna(0)
         
-        # Mapeo de días de texto a número (Python: Lunes=0, Domingo=6)
-        # Aseguramos que el texto esté limpio (Mayúsculas, sin tildes)
-        mapa_dias = {
-            'LUNES': 0, 'MARTES': 1, 'MIERCOLES': 2, 'MIÉRCOLES': 2, 
-            'JUEVES': 3, 'VIERNES': 4, 'SABADO': 5, 'SÁBADO': 5, 'DOMINGO': 6
-        }
+        mapa_meses = {1:"Enero", 2:"Febrero", 3:"Marzo", 4:"Abril", 5:"Mayo", 6:"Junio", 
+                      7:"Julio", 8:"Agosto", 9:"Septiembre", 10:"Octubre", 11:"Noviembre", 12:"Diciembre"}
 
-        # Preparamos la Agenda: Creamos un diccionario {Profesional: [Lista de días que trabaja]}
-        # Ejemplo: {'PEREZ JUAN': [0, 3]} (Lunes y Jueves)
-        agenda_dict = {}
-        
-        # Normalizamos nombre del profesional y dia
-        if 'PROFESIONAL/EQUIPO' in df_agenda.columns and 'DIA_SEMANA' in df_agenda.columns:
-            # Iteramos para llenar el diccionario
-            for _, row in df_agenda.iterrows():
-                prof = str(row['PROFESIONAL/EQUIPO']).strip().upper()
-                dia_txt = str(row['DIA_SEMANA']).strip().upper()
-                dia_num = mapa_dias.get(dia_txt)
-                
-                if dia_num is not None:
-                    if prof not in agenda_dict:
-                        agenda_dict[prof] = []
-                    # Agregamos el día (si trabaja doble turno el martes, agregamos dos veces el 1)
-                    # Esto permite contar 2 consultorios cancelados si falta un martes.
-                    agenda_dict[prof].append(dia_num)
-        
-        # --- FUNCIÓN MAESTRA DE CÁLCULO ---
-        def calcular_consultorios_perdidos(row):
-            prof = str(row['PROFESIONAL']).strip().upper()
-            inicio = row['FECHA_INICIO']
-            fin = row['FECHA_FIN']
-            
-            # Si faltan fechas, devolvemos 0
-            if pd.isna(inicio) or pd.isna(fin): return 0
-            
-            # Si el profesional NO está en la agenda (ej: es nuevo o nombre mal escrito),
-            # usamos el método "tonto" (días corridos).
-            if prof not in agenda_dict:
-                return (fin - inicio).days + 1
-            
-            # Si ESTÁ en agenda, hacemos el cálculo exacto
-            dias_laborables = agenda_dict[prof] # Lista de días ej: [0, 3]
-            consultorios_cancelados = 0
-            
-            # Recorremos cada día de la licencia
-            dias_licencia = (fin - inicio).days + 1
-            for i in range(dias_licencia):
-                dia_actual = inicio + pd.Timedelta(days=i)
-                dia_semana_actual = dia_actual.weekday() # 0=Lunes, etc.
-                
-                # Contamos cuántas veces aparece ese día en su agenda
-                # Si trabaja 2 veces el martes, .count() sumará 2.
-                coincidencias = dias_laborables.count(dia_semana_actual)
-                consultorios_cancelados += coincidencias
-                
-            return consultorios_cancelados
-
-        # APLICAMOS LA MAGIA 🪄
-        # Creamos la columna real calculada
-        df_aus['CONSULTORIOS_CANCELADOS'] = df_aus.apply(calcular_consultorios_perdidos, axis=1)
-
-        # --- FILTROS (Igual que antes) ---
+        # --- BARRA LATERAL (FILTROS) ---
         with st.sidebar:
             st.header("🎛️ Filtros Ausentismo")
             
-            # Filtro Año
+            # 1. Filtro Año
             if not df_aus['FECHA_INICIO'].dropna().empty:
                 años = sorted(df_aus['FECHA_INICIO'].dt.year.dropna().unique())
                 año_sel = st.selectbox("Año:", años, index=len(años)-1)
@@ -301,74 +232,99 @@ elif app_mode == "📉 Gestión de Ausentismo":
             else:
                 df_filtered = df_aus
 
-            # Filtro Mes
-            mapa_meses_nombre = {1:"Enero", 2:"Febrero", 3:"Marzo", 4:"Abril", 5:"Mayo", 6:"Junio", 7:"Julio", 8:"Agosto", 9:"Septiembre", 10:"Octubre", 11:"Noviembre", 12:"Diciembre"}
+            # 2. Filtro Mes
             df_filtered['MES_NUM'] = df_filtered['FECHA_INICIO'].dt.month
             meses_disponibles = sorted(df_filtered['MES_NUM'].dropna().unique())
-            meses_sel = st.multiselect("Mes(es):", options=meses_disponibles, format_func=lambda x: mapa_meses_nombre.get(x, x), default=meses_disponibles)
-            if meses_sel: df_filtered = df_filtered[df_filtered['MES_NUM'].isin(meses_sel)]
+            
+            meses_sel = st.multiselect(
+                "Mes(es):", 
+                options=meses_disponibles,
+                format_func=lambda x: mapa_meses.get(x, x),
+                default=meses_disponibles
+            )
+            
+            if meses_sel:
+                df_filtered = df_filtered[df_filtered['MES_NUM'].isin(meses_sel)]
 
             st.divider()
-            
-            # Filtros extra
+
+            # 3. Filtros Categóricos
             if 'DEPARTAMENTO' in df_filtered.columns:
                 depto = st.multiselect("Departamento:", sorted(df_filtered['DEPARTAMENTO'].astype(str).unique()))
                 if depto: df_filtered = df_filtered[df_filtered['DEPARTAMENTO'].isin(depto)]
+            
             if 'SERVICIO' in df_filtered.columns:
                 servicio = st.multiselect("Servicio:", sorted(df_filtered['SERVICIO'].astype(str).unique()))
                 if servicio: df_filtered = df_filtered[df_filtered['SERVICIO'].isin(servicio)]
+            
+            # === NUEVO FILTRO: PROFESIONAL ===
             if 'PROFESIONAL' in df_filtered.columns:
+                # Ordenamos alfabéticamente
                 lista_profs = sorted(df_filtered['PROFESIONAL'].astype(str).unique())
                 prof_sel = st.multiselect("Profesional:", lista_profs)
                 if prof_sel: df_filtered = df_filtered[df_filtered['PROFESIONAL'].isin(prof_sel)]
+            # =================================
+            
             if 'MOTIVO' in df_filtered.columns:
                 motivo = st.multiselect("Motivo:", sorted(df_filtered['MOTIVO'].astype(str).unique()))
                 if motivo: df_filtered = df_filtered[df_filtered['MOTIVO'].isin(motivo)]
 
-        if df_filtered.empty: st.warning("⚠️ Sin datos."); st.stop()
+        if df_filtered.empty:
+            st.warning("⚠️ No hay datos para esa selección.")
+            st.stop()
 
         # --- KPI PRINCIPALES ---
         col1, col2, col3, col4 = st.columns(4)
         
-        # AQUI USAMOS LA NUEVA COLUMNA CALCULADA
-        total_consultorios = df_filtered['CONSULTORIOS_CANCELADOS'].sum()
+        total_dias = df_filtered['DIAS_CAIDOS'].sum()
         total_eventos = len(df_filtered)
         total_personas = df_filtered['PROFESIONAL'].nunique()
         top_motivo = df_filtered['MOTIVO'].mode()[0] if not df_filtered['MOTIVO'].empty else "-"
 
-        col1.metric("Consultorios Cancelados (Real)", f"{total_consultorios:,.0f}", help="Cálculo exacto cruzando días de licencia con días de agenda del profesional.")
+        # Cambiamos el nombre de la métrica para evitar confusión
+        col1.metric("Suma Días Ausencia", f"{total_dias:,.0f}", help="Suma acumulada de días perdidos por todos los profesionales (Días-Hombre)")
         col2.metric("Eventos/Licencias", f"{total_eventos}")
         col3.metric("Profesionales Únicos", f"{total_personas}")
         col4.metric("Motivo Principal", str(top_motivo))
         
         st.markdown("---")
 
-        # --- GRÁFICOS ---
+        # --- GRÁFICOS NIVEL 1 ---
         c1, c2 = st.columns(2)
+        
         with c1:
-            st.subheader("🍰 Motivos")
-            # Usamos CONSULTORIOS_CANCELADOS como valor, para ver impacto real
-            fig_pie = px.pie(df_filtered, values='CONSULTORIOS_CANCELADOS', names='MOTIVO', hole=0.4)
+            st.subheader("🍰 Distribución por Motivo")
+            fig_pie = px.pie(df_filtered, values='DIAS_CAIDOS', names='MOTIVO', hole=0.4)
             st.plotly_chart(fig_pie, use_container_width=True)
             
         with c2:
-            st.subheader("🏥 Impacto por Servicio")
-            df_serv = df_filtered.groupby('SERVICIO')['CONSULTORIOS_CANCELADOS'].sum().reset_index().sort_values('CONSULTORIOS_CANCELADOS', ascending=True).tail(10)
-            fig_bar = px.bar(df_serv, x='CONSULTORIOS_CANCELADOS', y='SERVICIO', orientation='h', text='CONSULTORIOS_CANCELADOS')
+            st.subheader("🏥 Top Servicios (Días Caídos)")
+            df_serv = df_filtered.groupby('SERVICIO')['DIAS_CAIDOS'].sum().reset_index().sort_values('DIAS_CAIDOS', ascending=True).tail(10)
+            fig_bar = px.bar(df_serv, x='DIAS_CAIDOS', y='SERVICIO', orientation='h', text='DIAS_CAIDOS')
             fig_bar.update_traces(marker_color='#FF5252', textposition='outside')
             st.plotly_chart(fig_bar, use_container_width=True)
 
-        st.subheader("🥇 Top Profesionales (Mayor impacto en oferta)")
-        df_prof_rank = df_filtered.groupby('PROFESIONAL')['CONSULTORIOS_CANCELADOS'].sum().reset_index().sort_values('CONSULTORIOS_CANCELADOS', ascending=True).tail(15)
-        fig_prof = px.bar(df_prof_rank, x='CONSULTORIOS_CANCELADOS', y='PROFESIONAL', orientation='h', text='CONSULTORIOS_CANCELADOS')
-        fig_prof.update_traces(marker_color='#42A5F5', textposition='outside')
-        fig_prof.update_layout(height=500)
+        # --- GRÁFICOS NIVEL 2 (NUEVO) ---
+        st.subheader("🥇 Top Profesionales con más Ausencias")
+        st.caption("Ranking de profesionales ordenado por cantidad de días acumulados de licencia en el periodo seleccionado.")
+        
+        # Agrupamos por profesional y sumamos días
+        df_prof_rank = df_filtered.groupby('PROFESIONAL')['DIAS_CAIDOS'].sum().reset_index()
+        # Ordenamos y tomamos el Top 15 para que no sea gigante
+        df_prof_rank = df_prof_rank.sort_values('DIAS_CAIDOS', ascending=True).tail(15)
+        
+        fig_prof = px.bar(df_prof_rank, x='DIAS_CAIDOS', y='PROFESIONAL', orientation='h', text='DIAS_CAIDOS')
+        fig_prof.update_traces(marker_color='#42A5F5', textposition='outside') # Color azulito distinto
+        fig_prof.update_layout(height=500) # Un poco más alto para que entren los nombres
         st.plotly_chart(fig_prof, use_container_width=True)
 
-        with st.expander("📄 Ver Detalle (Cálculo)"):
-            st.info("La columna 'CONSULTORIOS_CANCELADOS' muestra el impacto real según la agenda.")
-            st.dataframe(df_filtered[['FECHA_INICIO', 'FECHA_FIN', 'PROFESIONAL', 'SERVICIO', 'MOTIVO', 'DIAS_CAIDOS', 'CONSULTORIOS_CANCELADOS']], use_container_width=True)
+        # --- TABLA DETALLE ---
+        with st.expander("📄 Ver Detalle de Registros"):
+            st.dataframe(
+                df_filtered[['FECHA_INICIO', 'FECHA_FIN', 'PROFESIONAL', 'SERVICIO', 'MOTIVO', 'DIAS_CAIDOS']], 
+                use_container_width=True
+            )
 
     except Exception as e:
-        st.error("Error en el cálculo.")
-        st.write(e)
+        st.error("Hubo un error cargando Ausentismo.")
+        st.write(f"Detalle técnico: {e}")
