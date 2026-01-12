@@ -156,4 +156,75 @@ try:
         if 'TIPO_ATENCION' in df_filtered.columns:
             df_filtered = df_filtered[df_filtered['TIPO_ATENCION'] == 'ANP']
         else:
-            st.error("⚠️ No encuentro
+            st.error("⚠️ No encuentro la columna 'TIPO_ATENCION' en el Excel.")
+    # Si es "Todos", no hacemos nada y pasa todo.
+
+    # 3. Aplicar subfiltros restantes
+    if filtro_depto: df_filtered = df_filtered[df_filtered['DEPARTAMENTO'].isin(filtro_depto)]
+    if filtro_servicio: df_filtered = df_filtered[df_filtered['SERVICIO'].isin(filtro_servicio)]
+    if filtro_sede: df_filtered = df_filtered[df_filtered['SEDE'].isin(filtro_sede)]
+    if filtro_prof: df_filtered = df_filtered[df_filtered['PROFESIONAL/EQUIPO'].isin(filtro_prof)]
+
+    if df_filtered.empty:
+        st.error("⚠️ No hay datos para esa selección.")
+        st.stop()
+
+    # --- VISUALIZACIÓN ---
+    
+    # MODO 1: GLOBAL
+    if modo_analisis == "📊 Análisis Global":
+        totales = df_filtered[val_sel].sum()
+        
+        # Título dinámico bonito
+        nombres_meses = [formato_fecha_linda(m) for m in meses_sel]
+        st.subheader(f"Resumen ({filtro_tipo_atencion}): {', '.join(nombres_meses)}")
+        
+        cols = st.columns(len(val_sel))
+        for i, metrica in enumerate(val_sel):
+            cols[i].metric(metrica, f"{totales[metrica]:,.0f}")
+        
+        st.markdown("---")
+        
+        t1, t2 = st.tabs(["📊 Gráfico", "📄 Tabla"])
+        with t1:
+            st.bar_chart(df_filtered.groupby(filas_sel[0])[val_sel].sum())
+        with t2:
+            tabla = pd.pivot_table(df_filtered, index=filas_sel, values=val_sel, aggfunc='sum', margins=True, margins_name='TOTAL')
+            st.dataframe(tabla.style.format("{:,.0f}").background_gradient(cmap='Blues'), use_container_width=True)
+
+    # MODO 2: COMPARATIVA
+    else:
+        # Títulos bonitos usando la función
+        nombre_a = formato_fecha_linda(periodo_a)
+        nombre_b = formato_fecha_linda(periodo_b)
+        
+        st.subheader(f"🆚 Comparativa ({filtro_tipo_atencion}): {nombre_a} vs {nombre_b}")
+        
+        df_a = df_filtered[df_filtered['PERIODO'] == periodo_a]
+        df_b = df_filtered[df_filtered['PERIODO'] == periodo_b]
+        
+        cols = st.columns(len(val_sel))
+        for i, metrica in enumerate(val_sel):
+            va = df_a[metrica].sum()
+            vb = df_b[metrica].sum()
+            delta = vb - va
+            pct = (delta/va*100) if va>0 else 0
+            cols[i].metric(metrica, f"{vb:,.0f}", f"{delta:,.0f} ({pct:.1f}%)")
+            
+        st.markdown("---")
+        
+        # Usamos los nombres bonitos para las columnas del gráfico
+        ga = df_a.groupby(filas_sel[0])[val_sel[0]].sum().rename(nombre_a)
+        gb = df_b.groupby(filas_sel[0])[val_sel[0]].sum().rename(nombre_b)
+        df_chart = pd.concat([ga, gb], axis=1).fillna(0)
+        
+        t1, t2 = st.tabs(["📊 Comparación", "📄 Variación"])
+        with t1:
+            st.bar_chart(df_chart)
+        with t2:
+            df_chart['Diferencia'] = df_chart.iloc[:,1] - df_chart.iloc[:,0]
+            st.dataframe(df_chart.style.format("{:,.0f}").background_gradient(cmap='RdYlGn', subset=['Diferencia']), use_container_width=True)
+
+except Exception as e:
+    st.error("Error técnico:")
+    st.write(e)
