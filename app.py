@@ -293,7 +293,7 @@ elif app_mode == "📉 Gestión de Ausentismo":
 
         col1.metric("Consultorios Cancelados", f"{total_consultorios:,.0f}", help="Suma de la columna manual del Excel.")
         col2.metric("Eventos/Licencias", f"{len(df_filtered)}")
-        col3.metric("Profesionales Únicos", f"{df_filtered['PROFESIONAL'].nunique()}")
+        col3.metric("Profesionales Que Cancelaron", f"{df_filtered['PROFESIONAL'].nunique()}")
         col4.metric("Motivo Principal", str(top_motivo))
         st.markdown("---")
 
