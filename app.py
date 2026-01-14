@@ -30,7 +30,7 @@ with st.sidebar:
     st.markdown("---")
 
 # ==============================================================================
-# APP 1: OFERTA DE TURNOS (RESTAURADA A SU GLORIA ORIGINAL 🌟)
+# APP 1: OFERTA DE TURNOS (CORREGIDA: SIN DUPLICADOS EN SEDES ✅)
 # ==============================================================================
 if app_mode == "🏥 Oferta de Turnos":
     st.title("🏥 Oferta de Turnos de Consultorio")
@@ -43,7 +43,20 @@ if app_mode == "🏥 Oferta de Turnos":
 
     try:
         df = cargar_datos_oferta()
-        df.columns = df.columns.str.strip()
+        df.columns = df.columns.str.strip() # Limpieza de títulos de columnas
+        
+        # --- CORRECCIÓN DE DUPLICADOS (SEDES Y DEPTOS) ---
+        # Esto elimina los espacios vacíos al final que duplicaban "BELGRANO"
+        if 'SEDE' in df.columns:
+            df['SEDE'] = df['SEDE'].astype(str).str.strip().str.upper()
+        
+        if 'DEPARTAMENTO' in df.columns:
+            df['DEPARTAMENTO'] = df['DEPARTAMENTO'].astype(str).str.strip().str.upper()
+            
+        if 'SERVICIO' in df.columns:
+            df['SERVICIO'] = df['SERVICIO'].astype(str).str.strip().str.upper()
+        # --------------------------------------------------
+
         df['PERIODO'] = pd.to_datetime(df['PERIODO'], dayfirst=True, errors='coerce')
         df = df.dropna(subset=['PERIODO'])
 
@@ -51,7 +64,7 @@ if app_mode == "🏥 Oferta de Turnos":
             meses = {1:"Enero", 2:"Febrero", 3:"Marzo", 4:"Abril", 5:"Mayo", 6:"Junio", 7:"Julio", 8:"Agosto", 9:"Septiembre", 10:"Octubre", 11:"Noviembre", 12:"Diciembre"}
             return f"{meses[fecha.month]}-{fecha.year}"
 
-        # --- FILTROS COMPLETOS (RECUPERADOS) ---
+        # --- FILTROS COMPLETOS ---
         with st.sidebar:
             st.header("🎛️ Configuración Turnos")
             modo_analisis = st.radio("Vista:", ["📊 Global", "🆚 Comparativa"], horizontal=True)
@@ -73,14 +86,14 @@ if app_mode == "🏥 Oferta de Turnos":
             # FILTROS ESPECÍFICOS
             with st.expander("🔍 Filtros Avanzados", expanded=False):
                 filtro_tipo = st.radio("Modalidad:", ["Todos", "Programada (AP)", "No Programada (ANP)"], horizontal=True)
-                depto = st.multiselect("Depto:", sorted(df['DEPARTAMENTO'].astype(str).unique()))
-                serv = st.multiselect("Servicio:", sorted(df['SERVICIO'].astype(str).unique()))
-                sede = st.multiselect("Sede:", sorted(df['SEDE'].astype(str).unique()))
+                depto = st.multiselect("Depto:", sorted(df['DEPARTAMENTO'].unique()))
+                serv = st.multiselect("Servicio:", sorted(df['SERVICIO'].unique()))
+                sede = st.multiselect("Sede:", sorted(df['SEDE'].unique())) # Ahora saldrá limpio
                 prof = st.multiselect("Profesional:", sorted(df['PROFESIONAL/EQUIPO'].astype(str).unique()))
 
             st.divider()
 
-            # SELECTORES DE AGRUPACIÓN (¡ESTO ES LO QUE FALTABA!)
+            # SELECTORES DE AGRUPACIÓN
             cols_texto = df.select_dtypes(include=['object']).columns.tolist()
             default_fila = ['SERVICIO'] if 'SERVICIO' in cols_texto else [cols_texto[0]]
             filas_sel = st.multiselect("Agrupar por:", cols_texto, default=default_fila)
